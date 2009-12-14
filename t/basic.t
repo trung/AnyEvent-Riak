@@ -5,12 +5,16 @@ use JSON::XS;
 use Test::Exception;
 use AnyEvent::Riak;
 
-my $jiak = AnyEvent::Riak->new(
-    host => 'http://127.0.0.1:8098',
+my ($host, $path);
+BEGIN {
+    my $riak_test = $ENV{RIAK_TEST_SERVER};
+    ( $host, $path ) = split ";", $riak_test if $riak_test;
+    plan skip_all =>
+        'set $ENV{RIAK_TEST_SERVER} like this http://127.0.0.1:8098;jiak if you want to run the tests'
+        unless ( $host && $path );
+}
 
-    #host => 'http://192.168.0.11:8098',
-    path => 'jiak'
-);
+my $jiak = AnyEvent::Riak->new( host => $host, path => $path );
 
 ok my $buckets = $jiak->list_bucket('bar')->recv, "... fetch bucket list";
 is scalar @{ $buckets->{keys} }, '0', '... no keys';
