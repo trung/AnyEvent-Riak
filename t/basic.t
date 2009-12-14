@@ -7,6 +7,8 @@ use AnyEvent::Riak;
 
 my $jiak = AnyEvent::Riak->new(
     host => 'http://127.0.0.1:8098',
+
+    #host => 'http://192.168.0.11:8098',
     path => 'jiak'
 );
 
@@ -31,5 +33,18 @@ ok $res = $jiak->delete( 'foo', 'bar' )->recv, '... delete our key';
 
 dies_ok { $jiak->fetch( 'foo', 'foo' )->recv } '... dies when error';
 like $@, qr/404/, '... 404 response';
+
+ok $res = $jiak->store($value)->recv, '... set a new key';
+my $second_value = {
+    bucket => 'foo',
+    key    => 'baz',
+    object => { foo => "bar", baz => 2 },
+    links  => [ [ 'foo', 'bar', 'tagged' ] ],
+};
+ok $res = $jiak->store($second_value)->recv, '... set another new key';
+
+ok $res = $jiak->walk( 'foo', 'baz', [ { bucket => 'foo', } ] )->recv,
+    '... walk';
+is $res->{results}->[0]->[0]->{key}, "bar", "... walked to bar";
 
 done_testing();

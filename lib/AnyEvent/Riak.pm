@@ -53,7 +53,7 @@ sub fetch {
     my ( $self, $bucket, $key, $r ) = @_;
     $r = $self->{r} || 2 if !$r;
     return $self->_request( 'GET',
-        $self->_build_uri( [ $bucket, $key ], { r =>  $r} ), '200' );
+        $self->_build_uri( [ $bucket, $key ], { r => $r } ), '200' );
 }
 
 sub store {
@@ -86,6 +86,25 @@ sub delete {
     $rw = $self->{rw} || 2 if !$rw;
     return $self->_request( 'DELETE',
         $self->_build_uri( [ $bucket, $key ], { dw => $rw } ), 204 );
+}
+
+sub walk {
+    my ( $self, $bucket, $key, $spec ) = @_;
+    my $path = $self->_build_uri( [ $bucket, $key ] );
+    $path .= $self->_build_spec($spec);
+    return $self->_request( 'GET', $path, 200 );
+}
+
+sub _build_spec {
+    my ( $self, $spec ) = @_;
+    my $acc = '/';
+    foreach my $item (@$spec) {
+        $acc
+            .= ( $item->{bucket} || '_' ) . ','
+            . ( $item->{tag} || '_' ) . ','
+            . ( $item->{acc} || '_' ) . '/';
+    }
+    return $acc;
 }
 
 sub _build_uri {
@@ -154,6 +173,12 @@ AnyEvent::Riak - Non-blocking Riak client
 =head1 DESCRIPTION
 
 AnyEvent::Riak is a non-blocking riak client using anyevent.
+
+=head2 METHODS
+
+=over 4
+
+=back
 
 =head1 AUTHOR
 
