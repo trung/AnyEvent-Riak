@@ -164,7 +164,7 @@ AnyEvent::Riak - Non-blocking Riak client
     path => 'jiak',
   );
 
-  my $buckets    = $riak->list_bucket('namespace')->recv;
+  my $buckets    = $riak->list_bucket('bucketname')->recv;
   my $new_bucket = $riak->set_bucket('foo', {allowed_fields => '*'})->recv;
   my $store      = $riak->store({bucket => 'foo', key => 'bar', object => {baz => 1},link => []})->recv;
   my $fetch      = $riak->fetch('foo', 'bar')->recv;
@@ -177,6 +177,57 @@ AnyEvent::Riak is a non-blocking riak client using anyevent.
 =head2 METHODS
 
 =over 4
+
+=item B<list_bucket>
+
+Get the schema and key list for 'bucket'
+
+    $riak->list_bucket('bucketname')->recv;
+
+=item B<set_bucket>
+
+Set the schema for 'bucket'. The schema parameter must be a hash with at least
+an 'allowed_fields' field. Other valid fields are 'requried_fields',
+'read_mask', and 'write_mask'.
+
+    $riak->new_bucket('bucketname', {allowed_fields => '*'})->recv;
+
+=item B<fetch>
+
+Get the object stored in 'bucket' at 'key'.
+
+    $riak->fetch('bucketname', 'key')->recv;
+
+=item B<store>
+
+Store 'object' in Riak. If the object has not defined its 'key' field, a key
+will be chosen for it by the server.
+
+    $riak->store({
+        bucket => 'bucketname', 
+        key    => 'key', 
+        object => { foo => "bar", baz => 2 },
+        links  => [],
+    })->recv;
+
+=item B<delete>
+
+Delete the data stored in 'bucket' at 'key'.
+
+    $riak->delete('bucketname', 'key')->recv;
+
+=item B<walk>
+
+Follow links from the object stored in 'bucket' at 'key' to other objects.
+The 'spec' parameter should be an array of hashes, each hash optinally
+defining 'bucket', 'tag', and 'acc' fields.  If a field is not defined in a
+spec hash, the wildcard '_' will be used instead.
+
+    ok $res = $jiak->walk( 
+        'bucketname', 
+        'key', 
+        [ { bucket => 'bucketname', key => '_' } ] 
+    )->recv;
 
 =back
 
