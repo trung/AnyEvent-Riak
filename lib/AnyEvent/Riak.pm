@@ -6,18 +6,23 @@ use URI;
 use JSON::XS;
 use AnyEvent;
 use AnyEvent::HTTP;
+use Data::UUID;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 sub new {
     my ( $class, %args ) = @_;
 
+    my $uuid = Data::UUID->new;
+
     my $host = delete $args{host} || 'http://127.0.0.1:8098';
-    my $path = delete $args{path} || 'jiak';
+    my $path = delete $args{path} || 'riak';
+    my $clientId = delete $args{clientId} || $uuid->create_b64;
 
     bless {
         host => $host,
         path => $path,
+	clientId => $clientId,
         %args,
     }, $class;
 }
@@ -95,6 +100,11 @@ sub walk {
     return $self->_request( 'GET', $path, 200 );
 }
 
+sub get_clientId {
+    my ($self) = @_;
+    return $self->{clientId};
+}
+
 sub _build_spec {
     my ( $self, $spec ) = @_;
     my $acc = '/';
@@ -133,7 +143,7 @@ sub _request {
     if ($body) {
         http_request(
             $method => $uri,
-            headers => { 'Content-Type' => 'application/json', },
+            headers => $self->_build_headers,
             body    => $body,
             $cb
         );
@@ -141,11 +151,19 @@ sub _request {
     else {
         http_request(
             $method => $uri,
-            headers => { 'Content-Type' => 'application/json', },
+            headers => $self->_build_headers,
             $cb
         );
     }
     $cv;
+}
+
+sub _build_headers {
+    my ($self) = @_;
+    return { 
+	'Content-Type' => 'application/json', 
+	'X-Riak-ClientId' => $self->{clientId},
+    };
 }
 
 1;

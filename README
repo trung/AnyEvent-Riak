@@ -1,13 +1,28 @@
 This is Perl module AnyEvent::Riak.
 
+============
 INSTALLATION
+============
+
+CPAN
+====
+
+Noted: I haven't uploaded to CPAN, please proceed to Build section
 
 AnyEvent::Riak installation is straightforward. If your CPAN shell is set up,
 you should just be able to do
 
     % cpan AnyEvent::Riak
 
-Download it, unpack it, then build it as per the usual:
+Build
+=====
+
+If you wish to run test cases, you will need to set your environment variable
+    % export RIAK_TEST_SERVER=http://localhost:8098;riak
+
+Noted: it's semicolon (;), not slash (/)
+
+Download the source, unpack it, then build it as per the usual:
 
     % perl Makefile.PL
     % make && make test
@@ -16,8 +31,9 @@ Then install it:
 
     % make install
 
+=============
 DOCUMENTATION
-
+=============
 AnyEvent::Riak documentation is available as in POD. So you can do:
 
     % perldoc AnyEvent::Riak

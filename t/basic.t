@@ -16,6 +16,10 @@ BEGIN {
 
 my $jiak = AnyEvent::Riak->new( host => $host, path => $path );
 
+ok my $clientId = $jiak->get_clientId, "... get clientId";
+
+ok defined $clientId, "... clientId defined. Value is $clientId";
+
 ok my $buckets = $jiak->list_bucket('bar')->recv, "... fetch bucket list";
 is scalar @{ $buckets->{keys} }, '0', '... no keys';
 
