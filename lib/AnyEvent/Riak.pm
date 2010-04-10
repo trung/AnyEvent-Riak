@@ -17,7 +17,7 @@ sub new {
 
     my $host = delete $args{host} || 'http://127.0.0.1:8098';
     my $path = delete $args{path} || 'riak';
-    my $clientId = delete $args{clientId} || $uuid->create_b64;
+    my $clientId = delete $args{clientId} || $uuid->create_str;
 
     bless {
         host => $host,
@@ -30,22 +30,9 @@ sub new {
 sub set_bucket {
     my ( $self, $bucket, $schema ) = @_;
 
-    carp "your schema is missing allowed_fields"
-        if ( !exists $schema->{allowed_fields} );
-
-    if ( !exists $schema->{required_fields} ) {
-        $schema->{required_fields} = [];
-    }
-    if ( !exists $schema->{read_mask} ) {
-        $schema->{read_mask} = $schema->{allowed_fields};
-    }
-    if ( !exists $schema->{write_mask} ) {
-        $schema->{write_mask} = $schema->{read_mask};
-    }
-
     $self->_request(
         'PUT', $self->_build_uri( [$bucket] ),
-        '204', encode_json { schema => $schema }
+        '204', encode_json { props => $schema }
     );
 }
 
@@ -58,7 +45,7 @@ sub fetch {
     my ( $self, $bucket, $key, $r ) = @_;
     $r = $self->{r} || 2 if !$r;
     return $self->_request( 'GET',
-        $self->_build_uri( [ $bucket, $key ], { r => $r } ), '200' );
+        $self->_build_uri( [ $bucket, $key ], { r => $r } ), '200,300,304' );
 }
 
 sub store {
@@ -71,6 +58,8 @@ sub store {
     my $key    = $object->{key};
     $object->{links} = [] if !exists $object->{links};
 
+	# Normal status codes: 200 OK, 204 No Content, 300 Multiple Choices. 
+	# FIXME Links must be set in the Links header
     return $self->_request(
         'PUT',
         $self->_build_uri(
@@ -81,7 +70,7 @@ sub store {
                 returnbody => 'true'
             }
         ),
-        '200',
+        '200,204,300',
         encode_json $object);
 }
 
@@ -93,6 +82,7 @@ sub delete {
         $self->_build_uri( [ $bucket, $key ], { dw => $rw } ), 204 );
 }
 
+# FIXME doesn't work. Must handle multipart/fixed returned content
 sub walk {
     my ( $self, $bucket, $key, $spec ) = @_;
     my $path = $self->_build_uri( [ $bucket, $key ] );
@@ -128,16 +118,34 @@ sub _build_uri {
 sub _request {
     my ( $self, $method, $uri, $expected, $body ) = @_;
     my $cv = AnyEvent->condvar;
+
     my $cb = sub {
         my ( $body, $headers ) = @_;
-        if ( $headers->{Status} == $expected ) {
-            $body
-                ? return $cv->send( decode_json($body) )
-                : return $cv->send(1);
+        if ( $expected =~ m/$headers->{Status}/ ) {
+			eval {
+				if ($body) {
+					return $cv->send( decode_json($body) );
+				} else {
+					return $cv->send(1);
+				}
+			};
+			if ($@) {
+				return $cv->croak(
+	                JSON::XS->new->pretty(1)->encode( { method => $method, 
+								uri => $uri, 
+								body => $body,
+								status => $headers->{Status},
+								reason => $headers->{Reason},
+								error => $@ } ) );
+			}
         }
         else {
             return $cv->croak(
-                encode_json( [ $headers->{Status}, $headers->{Reason} ] ) );
+                JSON::XS->new->pretty(1)->encode( { method => $method, 
+							uri => $uri, 
+							body => $body,
+							status => $headers->{Status},
+							reason => $headers->{Reason}}) );
         }
     };
     if ($body) {

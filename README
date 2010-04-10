@@ -1,5 +1,12 @@
 This is Perl module AnyEvent::Riak.
 
+====
+BUGS
+====
+
+1. walking function doesn't work
+2. link headers must be present
+
 ============
 INSTALLATION
 ============
@@ -39,5 +46,3 @@ AnyEvent::Riak documentation is available as in POD. So you can do:
     % perldoc AnyEvent::Riak
 
 to read the documentation online with your favorite pager.
-
-franck cuny

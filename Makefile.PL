@@ -3,9 +3,10 @@ name 'AnyEvent-Riak';
 all_from 'lib/AnyEvent/Riak.pm';
 
 requires 'URI';
-requires 'JSON::XS';
+requires 'JSON:XS';
 requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
+requires 'Data::UUID';
 
 tests 't/*.t';
 author_tests 'xt';
