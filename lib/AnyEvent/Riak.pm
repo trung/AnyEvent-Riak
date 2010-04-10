@@ -95,6 +95,8 @@ sub default_cb {
             else {
                 return $_[0];
             }
+        }else{
+            return 1;
         }
     };
 }
@@ -134,53 +136,70 @@ sub list_bucket {
 }
 
 sub set_bucket {
-    my ( $self, $bucket, $schema ) = @_;
+    my $self   = shift;
+    my $bucket = shift;
+    my $schema = shift;
 
-    carp "your schema is missing allowed_fields"
-        if ( !exists $schema->{allowed_fields} );
+    my ( $cv, $cb ) = $self->_init_callback(@_);
+    $cb = $self->default_cb( { json => 1 } ) if !$cb;
 
-    if ( !exists $schema->{required_fields} ) {
-        $schema->{required_fields} = [];
-    }
-    if ( !exists $schema->{read_mask} ) {
-        $schema->{read_mask} = $schema->{allowed_fields};
-    }
-    if ( !exists $schema->{write_mask} ) {
-        $schema->{write_mask} = $schema->{read_mask};
-    }
-
+    http_request(
+        PUT => $self->_build_uri( [ $self->{path}, 'bucket' ] ),
+        headers => { 'Content-Type' => 'application/json' },
+        body    => JSON::encode_json($schema),
+        sub {
+            $cv->send( $cb->(@_) );
+        }
+    );
+    $cv;
 }
 
-# sub fetch {
-#     my ( $self, $bucket, $key, $r ) = @_;
-#     $r = $self->{r} || 2 if !$r;
-#     return $self->_request( 'GET',
-#         $self->_build_uri( [ $bucket, $key ], { r => $r } ), '200' );
-# }
+sub fetch {
+    my $self   = shift;
+    my $bucket = shift;
+    my $key    = shift;
+    my $r      = shift;
 
-# sub store {
-#     my ( $self, $object, $w, $dw, ) = @_;
+    $r = $self->{r} if !$r;
 
-#     $w  = $self->{w}  || 2 if !$w;
-#     $dw = $self->{dw} || 2 if !$dw;
+    my ( $cv, $cb ) = $self->_init_callback(@_);
+    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+    http_request(
+        GET => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
+        headers => { 'Content-Type' => 'application/json' },
+        sub {
+            $cv->send( $cb->(@_) );
+        }
+    );
+    $cv;
+}
 
-#     my $bucket = $object->{bucket};
-#     my $key    = $object->{key};
-#     $object->{links} = [] if !exists $object->{links};
+sub store {
+    my $self   = shift;
+    my $object = shift;
+    my $w      = shift;
+    my $dw     = shift;
 
-#     return $self->_request(
-#         'PUT',
-#         $self->_build_uri(
-#             [ $bucket, $key ],
-#             {
-#                 w          => $w,
-#                 dw         => $dw,
-#                 returnbody => 'true'
-#             }
-#         ),
-#         '200',
-#         encode_json $object);
-# }
+    $w  = $self->{w}  if !$w;
+    $dw = $self->{dw} if !$dw;
+
+    my $bucket = $object->{bucket};
+    my $key    = $object->{key};
+    $object->{links} = [] if !exists $object->{links};
+
+    my ( $cv, $cb ) = $self->_init_callback(@_);
+    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+
+    http_request(
+        POST => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
+        headers => { 'Content-Type' => 'application/json' },
+        body    => JSON::encode_json($object),
+        sub {
+            $cv->send( $cb->(@_) );
+        }
+    );
+    $cv;
+}
 
 # sub delete {
 #     my ( $self, $bucket, $key, $rw ) = @_;
