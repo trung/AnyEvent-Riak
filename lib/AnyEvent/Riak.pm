@@ -184,7 +184,12 @@ sub fetch {
         ),
         headers => $self->_build_headers( $options{parameters} ),
         sub {
-            $cv->send( $cb->(@_) );
+            my ($body, $headers) = @_;
+            if ($body && $headers->{Status} == 200) {
+                $cv->send( $cb->(JSON::decode_json($body)) );
+            }else{
+                $cv->send( $cb->(0) );
+            }
         }
     );
     $cv;
@@ -212,7 +217,14 @@ sub store {
         headers => $self->_build_headers( $options{parameters} ),
         body    => $json,
         sub {
-            $cv->send( $cb->(@_) );
+            my ($body, $headers) = @_;
+            my $result;
+            if ($headers->{Status} == 204) {
+                $result = $body ? JSON::decode_json($body) : 1;
+            }else{
+                $result = 0;
+            }
+            $cv->send( $cb->($result) );
         }
     );
     $cv;

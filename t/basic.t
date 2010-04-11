@@ -65,8 +65,8 @@ my $value = {
 
 ok my $res = $riak->store('foo', 'bar', $value)->recv, 'set a new key';
 
-# ok $res = $riak->fetch( 'foo', 'bar' )->recv, 'fetch our new key';
-# is_deeply $res, $value, 'value is ok';
+ok $res = $riak->fetch( 'foo', 'bar' )->recv, 'fetch our new key';
+is_deeply $res, $value, 'value is ok';
 # ok $res = $riak->delete( 'foo', 'bar' )->recv, 'delete our key';
 
 # ok my $store_w_cb = $riak->store(
