@@ -38,10 +38,10 @@ sub new {
 }
 
 sub _build_uri {
-    my ( $self, $path, $query ) = @_;
+    my ( $self, $path, $options ) = @_;
     my $uri = URI->new( $self->{host} );
-    $uri->path(  join( "/", @$path ) );
-    $uri->query_form(%$query) if $query;
+    $uri->path( join( "/", @$path ) );
+    $uri->query_form( $self->_build_query($options) );
     return $uri->as_string;
 }
 
@@ -57,6 +57,12 @@ sub _build_headers {
 
 sub _build_query {
     my ($self, $options) = @_;
+    my $valid_options = [qw/props keys returnbody/];
+    my $query;
+    foreach (@$valid_options) {
+        $query->{$_} = $options->{$_} if exists $options->{$_}
+    }
+    $query;
 }
 
 sub _init_callback {
@@ -76,16 +82,16 @@ sub default_cb {
     my ( $self, $options ) = @_;
     return sub {
         my ( $body, $headers ) = @_;
-        my $status = 200;
+        my $status = $options->{expected} || 200;
         if ( $headers->{Status} == $status ) {
-            if ( $options->{json} ) {
+            if ( $body && $options->{json} ) {
                 return JSON::decode_json( $_[0] );
             }
             else {
                 return $_[0];
             }
         }else{
-            return 1;
+            # FIXME
         }
     };
 }
@@ -112,10 +118,10 @@ sub list_bucket {
     my $options     = shift;
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+    $cb = $self->default_cb( { json => 1, expected => 200 } ) if !$cb;
 
     http_request(
-        GET => $self->_build_uri( [ $self->{path}, $bucket_name ] ),
+        GET => $self->_build_uri( [ $self->{path}, $bucket_name ], $options ),
         headers => $self->_build_headers(),
        sub {
            $cv->send($cb->(@_));
@@ -130,7 +136,7 @@ sub set_bucket {
     my $schema = shift;
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+    $cb = $self->default_cb( { json => 1, expected => 204 } ) if !$cb;
 
     http_request(
         PUT => $self->_build_uri( [ $self->{path}, 'bucket' ] ),
@@ -209,25 +215,6 @@ sub delete {
     $cv;
 }
 
-# sub walk {
-#     my ( $self, $bucket, $key, $spec ) = @_;
-#     my $path = $self->_build_uri( [ $bucket, $key ] );
-#     $path .= $self->_build_spec($spec);
-#     return $self->_request( 'GET', $path, 200 );
-# }
-
-# sub _build_spec {
-#     my ( $self, $spec ) = @_;
-#     my $acc = '/';
-#     foreach my $item (@$spec) {
-#         $acc
-#             .= ( $item->{bucket} || '_' ) . ','
-#             . ( $item->{tag} || '_' ) . ','
-#             . ( $item->{acc} || '_' ) . '/';
-#     }
-#     return $acc;
-# }
-
 1;
 __END__
 
@@ -256,6 +243,9 @@ AnyEvent::Riak - Non-blocking Riak client
     my $delete = $riak->delete( 'foo', 'bar' )->recv;
   }
 
+For a complete description of the Riak REST API, please refer to
+L<https://wiki.basho.com/display/RIAK/REST+API>.
+
 =head1 DESCRIPTION
 
 AnyEvent::Riak is a non-blocking riak client using C<AnyEvent>. This client allows you to connect to a Riak instance, create, modify and delete Riak objects.
@@ -266,7 +256,22 @@ AnyEvent::Riak is a non-blocking riak client using C<AnyEvent>. This client allo
 
 =item B<is_alive>
 
-Check if the Riak server is alive.
+Check if the Riak server is alive. Default callback will return 'OK'.
+
+    # with callback
+    my $ping = $riak->is_alive(sub {
+        my ($body, $headers) = @_;
+        if ($body eq 'OK') {
+            # if everything is OK
+        }else{
+            # if something is wrong
+        }
+    });
+
+    $ping->recv;
+
+    #without callback
+    my $ping = $riak->is_alive->recv;
 
 =item B<list_bucket>
 
