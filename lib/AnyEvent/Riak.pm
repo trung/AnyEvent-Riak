@@ -224,24 +224,18 @@ AnyEvent::Riak - Non-blocking Riak client
 
 =head1 SYNOPSIS
 
-  use AnyEvent::Riak;
+    use AnyEvent::Riak;
 
-  my $riak = AnyEvent::Riak->new(
-    host => 'http://127.0.0.1:8098',
-    path => 'riak',
-  );
+    my $riak = AnyEvent::Riak->new(
+      host => 'http://127.0.0.1:8098',
+      path => 'riak',
+    );
 
-  if ( $riak->is_alive->recv ) {
+    die "Riak is not running" unless $riak->is_alive->recv;
+
     my $buckets = $riak->list_bucket('bucketname')->recv;
     my $new_bucket
-        = $riak->set_bucket( 'foo', { allowed_fields => '*' } )->recv;
-    my $store
-        = $riak->store(
-        { bucket => 'foo', key => 'bar', object => { baz => 1 }, link => [] }
-        )->recv;
-    my $fetch = $riak->fetch( 'foo', 'bar' )->recv;
-    my $delete = $riak->delete( 'foo', 'bar' )->recv;
-  }
+        = $riak->set_bucket( 'foo', { props => { n_val => 2 } } )->recv;
 
 For a complete description of the Riak REST API, please refer to
 L<https://wiki.basho.com/display/RIAK/REST+API>.
