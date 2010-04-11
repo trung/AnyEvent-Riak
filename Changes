@@ -2,3 +2,5 @@ Revision history for Perl extension AnyEvent::Riak
 
 0.01    Thu Dec 10 14:22:38 2009
         - original version
+0.02	
+		- Fix to adapt with Riak REST api 0.9.1

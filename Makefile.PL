@@ -3,7 +3,7 @@ name 'AnyEvent-Riak';
 all_from 'lib/AnyEvent/Riak.pm';
 
 requires 'URI';
-requires 'JSON:XS';
+requires 'JSON::XS';
 requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
 requires 'Data::UUID';
@@ -15,4 +15,5 @@ build_requires 'Test::More';
 build_requires 'Test::Exception';
 use_test_base;
 auto_include;
+# auto_set_repository;
 WriteAll;
