@@ -81,18 +81,8 @@ sub _init_callback {
 sub default_cb {
     my ( $self, $options ) = @_;
     return sub {
-        my ( $body, $headers ) = @_;
-        my $status = $options->{expected} || 200;
-        if ( $headers->{Status} == $status ) {
-            if ( $body && $options->{json} ) {
-                return JSON::decode_json( $_[0] );
-            }
-            else {
-                return $_[0];
-            }
-        }else{
-            # FIXME
-        }
+        my $res = shift;
+        return $res;
     };
 }
 
@@ -100,13 +90,19 @@ sub is_alive {
     my $self = shift;
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 0 } ) if !$cb;
+    $cb = $self->default_cb() if !$cb;
 
     http_request(
         GET => $self->_build_uri( [qw/ping/] ),
         headers => $self->_build_headers(),
         sub {
-            $cv->send( $cb->(@_) );
+            my ( $body, $headers ) = @_;
+            if ( $headers->{Status} == 200 ) {
+                $cv->send( $cb->(1) );
+            }
+            else {
+                $cv->send( $cb->(0) );
+            }
         },
     );
     return $cv;
@@ -118,13 +114,19 @@ sub list_bucket {
     my $options     = shift;
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1, expected => 200 } ) if !$cb;
+    $cb = $self->default_cb() if !$cb;
 
     http_request(
         GET => $self->_build_uri( [ $self->{path}, $bucket_name ], $options ),
         headers => $self->_build_headers(),
        sub {
-           $cv->send($cb->(@_));
+           my ($body, $headers) = @_;
+           if ($body && $headers->{Status} == 200) {
+               my $res = JSON::decode_json($body);
+               $cv->send($cb->($res));
+           }else{
+               $cv->send(undef);
+           }
        }
     );
     return $cv;
@@ -136,14 +138,19 @@ sub set_bucket {
     my $schema = shift;
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1, expected => 204 } ) if !$cb;
+    $cb = $self->default_cb() if !$cb;
 
     http_request(
         PUT => $self->_build_uri( [ $self->{path}, 'bucket' ] ),
         headers => $self->_build_headers(),
         body    => JSON::encode_json($schema),
         sub {
-            $cv->send($cb->(@_));
+            my ($body, $headers) = @_;
+            if ($headers->{Status} == 204) {
+                $cv->send($cb->(1));
+            }else{
+                $cv->send($cb->(0));
+            }
         }
     );
     $cv;
@@ -250,12 +257,13 @@ AnyEvent::Riak is a non-blocking riak client using C<AnyEvent>. This client allo
 
 =item B<is_alive>
 
-Check if the Riak server is alive. Default callback will return 'OK'.
+Check if the Riak server is alive. If the ping is successful, 1 is returned,
+else 0.
 
     # with callback
     my $ping = $riak->is_alive(sub {
-        my ($body, $headers) = @_;
-        if ($body eq 'OK') {
+        my $res = shift;
+        if ($res) {
             # if everything is OK
         }else{
             # if something is wrong
@@ -269,9 +277,39 @@ Check if the Riak server is alive. Default callback will return 'OK'.
 
 =item B<list_bucket>
 
-Get the schema and key list for 'bucket'
+Get the schema and key list for 'bucket'. Possible options are:
 
-    $riak->list_bucket('bucketname')->recv;
+=over 2
+
+=item
+
+props=[true|false] - whether to return the bucket properties
+
+=item
+
+keys=[true|false|stream] - whether to return the keys stored in the bucket
+
+=back
+
+If the operation failed, C<undef> is returned, else an hash reference
+describing the bucket is returned.
+
+    # with callback
+    my $bucket = $riak->list_bucket('bucketname', {}, sub {
+        my $struct = shift;
+        if (scalar @{$struct->{keys}}) {
+            # do something
+        }
+    });
+
+    # without callback
+    my $bucket = $riak->list_bucket(
+        'bucketname',
+        {
+            keys  => 'true',
+            props => 'false',
+        }
+    )->recv;
 
 =item B<set_bucket>
 
