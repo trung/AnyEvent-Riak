@@ -134,7 +134,7 @@ sub list_bucket {
 }
 
 sub set_bucket {
-    my ( $self, $bucket, %options ) = @_;
+    my ( $self, $bucket, $schema, %options ) = @_;
     my ( $cv, $cb );
 
     $cv = AE::cv;
@@ -166,19 +166,23 @@ sub set_bucket {
 }
 
 sub fetch {
-    my $self   = shift;
-    my $bucket = shift;
-    my $key    = shift;
-    my $r      = shift;
+    my ( $self, $bucket, $key, %options ) = @_;
+    my ( $cv, $cb );
 
-    $r = $self->{r} if !$r;
-
-    my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
     http_request(
-        GET => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
-        headers => $self->_build_headers(),
+        GET => $self->_build_uri(
+            [ $self->{path}, $bucket, $key ],
+            $options{parameters}
+        ),
+        headers => $self->_build_headers( $options{parameters} ),
         sub {
             $cv->send( $cb->(@_) );
         }
@@ -187,24 +191,25 @@ sub fetch {
 }
 
 sub store {
-    my $self   = shift;
-    my $bucket = shift;
-    my $key    = shift;
-    my $data   = shift;
-    my $w      = shift;
-    my $dw     = shift;
+    my ( $self, $bucket, $key, $object, %options ) = @_;
+    my ( $cv, $cb );
 
-    $w  = $self->{w}  if !$w;
-    $dw = $self->{dw} if !$dw;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
-    my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 0 } ) if !$cb;
-
-    my $json = JSON::encode_json($data);
+    my $json = JSON::encode_json($object);
 
     http_request(
-        POST => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
-        headers => $self->_build_headers(),
+        POST => $self->_build_uri(
+            [ $self->{path}, $bucket, $key ],
+            $options{parameters}
+        ),
+        headers => $self->_build_headers( $options{parameters} ),
         body    => $json,
         sub {
             $cv->send( $cb->(@_) );
@@ -214,18 +219,25 @@ sub store {
 }
 
 sub delete {
-    my $self = shift;
-    my $bucket = shift;
-    my $key = shift;
+    my ( $self, $bucket, $key, %options ) = @_;
+    my ( $cv, $cb );
 
-    my ($cv, $cb) = $self->_init_callback(@_);
-    $cb = $self->default_cb({json => 1}) if !$cb;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
     http_request(
-        DELETE => $self->_build_uri([$self->{path}, $bucket, $key]),
-        headers => $self->_build_headers(),
+        DELETE => $self->_build_uri(
+            [ $self->{path}, $bucket, $key ],
+            $options{parameters}
+        ),
+        headers => $self->_build_headers( $options{parameters} ),
         sub {
-            $cv->send($cb->(@_));
+            $cv->send( $cb->(@_) );
         }
     );
     $cv;
@@ -266,7 +278,7 @@ AnyEvent::Riak is a non-blocking riak client using C<AnyEvent>. This client allo
 
 =over 4
 
-=item B<is_alive>([callback => sub { }])
+=item B<is_alive>([callback => sub { }, parameters => { }])
 
 Check if the Riak server is alive. If the ping is successful, 1 is returned,
 else 0.
@@ -305,7 +317,7 @@ describing the bucket is returned.
         }
     );
 
-=item B<set_bucket>($bucketname, [parameters => { }, callback => { }])
+=item B<set_bucket>($bucketname, $bucketschema, [parameters => { }, callback => sub { }])
 
 Sets bucket properties like n_val and allow_mult.
 
@@ -325,11 +337,13 @@ If successful, B<1> is returned, else B<0>.
 
     my $result = $riak->set_bucket('bucket')->recv;
 
-=item B<fetch>
+=item B<fetch>($bucketname, $object, [parameters => { }, callback => sub { }])
 
-=item B<store>
+Reads an object from a bucket.
 
-=item B<delete>
+=item B<store>($bucketname, $objectname, $objectdata, [parameters => { }, callback => sub { }]);
+
+=item B<delete>($bucketname, $objectname, [parameters => { }, callback => sub { }]);
 
 =back
 
@@ -341,7 +355,7 @@ franck cuny E<lt>franck@lumberjaph.netE<gt>
 
 =head1 LICENSE
 
-Copyright 2009 by linkfluence.
+Copyright 2009, 2010 by linkfluence.
 
 L<http://linkfluence.net>
 
