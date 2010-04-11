@@ -47,11 +47,11 @@ sub _build_uri {
 
 sub _build_headers {
     my ( $self, $options) = @_;
-    my $headers = {};
-    $headers = {
+    my $headers = {
         'X-Riak-ClientId' => $self->{client_id},
         'Content-Type'    => 'application/json',
     };
+    # TODO add headers
     return $headers;
 }
 
@@ -65,19 +65,6 @@ sub _build_query {
     $query;
 }
 
-sub _init_callback {
-    my $self = shift;
-
-    my ( $cv, $cb );
-    if (@_) {
-        $cv = pop if UNIVERSAL::isa( $_[-1], 'AnyEvent::CondVar' );
-        $cb = pop if ref $_[-1] eq 'CODE';
-    }
-
-    $cv ||= AE::cv;
-    return ( $cv, $cb );
-}
-
 sub default_cb {
     my ( $self, $options ) = @_;
     return sub {
@@ -87,14 +74,20 @@ sub default_cb {
 }
 
 sub is_alive {
-    my $self = shift;
+    my ( $self, %options ) = @_;
+    my ( $cv, $cb );
 
-    my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb() if !$cb;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
     http_request(
         GET => $self->_build_uri( [qw/ping/] ),
-        headers => $self->_build_headers(),
+        headers => $self->_build_headers(%options),
         sub {
             my ( $body, $headers ) = @_;
             if ( $headers->{Status} == 200 ) {
@@ -109,47 +102,63 @@ sub is_alive {
 }
 
 sub list_bucket {
-    my $self        = shift;
-    my $bucket_name = shift;
-    my $options     = shift;
+    my ( $self, $bucket_name, %options ) = @_;
+    my ( $cv, $cb );
 
-    my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb() if !$cb;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
     http_request(
-        GET => $self->_build_uri( [ $self->{path}, $bucket_name ], $options ),
-        headers => $self->_build_headers(),
-       sub {
-           my ($body, $headers) = @_;
-           if ($body && $headers->{Status} == 200) {
-               my $res = JSON::decode_json($body);
-               $cv->send($cb->($res));
-           }else{
-               $cv->send(undef);
-           }
-       }
+        GET => $self->_build_uri(
+            [ $self->{path}, $bucket_name ],
+            $options{parameters}
+        ),
+        headers => $self->_build_headers( $options{parameters} ),
+        sub {
+            my ( $body, $headers ) = @_;
+            if ( $body && $headers->{Status} == 200 ) {
+                my $res = JSON::decode_json($body);
+                $cv->send( $cb->($res) );
+            }
+            else {
+                $cv->send(undef);
+            }
+        }
     );
     return $cv;
 }
 
 sub set_bucket {
-    my $self   = shift;
-    my $bucket = shift;
-    my $schema = shift;
+    my ( $self, $bucket, %options ) = @_;
+    my ( $cv, $cb );
 
-    my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb() if !$cb;
+    $cv = AE::cv;
+    if ( $options{callback} ) {
+        $cb = delete $options{callback};
+    }
+    else {
+        $cb = $self->default_cb();
+    }
 
     http_request(
-        PUT => $self->_build_uri( [ $self->{path}, 'bucket' ] ),
-        headers => $self->_build_headers(),
+        PUT => $self->_build_uri(
+            [ $self->{path}, 'bucket' ],
+            $options{parameters}
+        ),
+        headers => $self->_build_headers( $options{parameters} ),
         body    => JSON::encode_json($schema),
         sub {
-            my ($body, $headers) = @_;
-            if ($headers->{Status} == 204) {
-                $cv->send($cb->(1));
-            }else{
-                $cv->send($cb->(0));
+            my ( $body, $headers ) = @_;
+            if ( $headers->{Status} == 204 ) {
+                $cv->send( $cb->(1) );
+            }
+            else {
+                $cv->send( $cb->(0) );
             }
         }
     );
@@ -234,15 +243,17 @@ AnyEvent::Riak - Non-blocking Riak client
     use AnyEvent::Riak;
 
     my $riak = AnyEvent::Riak->new(
-      host => 'http://127.0.0.1:8098',
-      path => 'riak',
+        host => 'http://127.0.0.1:8098',
+        path => 'riak',
     );
 
     die "Riak is not running" unless $riak->is_alive->recv;
 
-    my $buckets = $riak->list_bucket('bucketname')->recv;
-    my $new_bucket
-        = $riak->set_bucket( 'foo', { props => { n_val => 2 } } )->recv;
+    my $bucket = $riak->set_bucket( 'foo',
+        parameters => { { props => { n_val => 2 } } } )->recv;
+
+
+This version is not compatible with the previous version (0.01) of this module and with Riak < 0.91.
 
 For a complete description of the Riak REST API, please refer to
 L<https://wiki.basho.com/display/RIAK/REST+API>.
@@ -255,29 +266,16 @@ AnyEvent::Riak is a non-blocking riak client using C<AnyEvent>. This client allo
 
 =over 4
 
-=item B<is_alive>
+=item B<is_alive>([callback => sub { }])
 
 Check if the Riak server is alive. If the ping is successful, 1 is returned,
 else 0.
 
-    # with callback
-    my $ping = $riak->is_alive(sub {
-        my $res = shift;
-        if ($res) {
-            # if everything is OK
-        }else{
-            # if something is wrong
-        }
-    });
-
-    $ping->recv;
-
-    #without callback
     my $ping = $riak->is_alive->recv;
 
-=item B<list_bucket>
+=item B<list_bucket>($bucketname, [callback => sub { }, parameters => { }])
 
-Get the schema and key list for 'bucket'. Possible options are:
+Get the schema and key list for 'bucket'. Possible parameters are:
 
 =over 2
 
@@ -294,67 +292,44 @@ keys=[true|false|stream] - whether to return the keys stored in the bucket
 If the operation failed, C<undef> is returned, else an hash reference
 describing the bucket is returned.
 
-    # with callback
-    my $bucket = $riak->list_bucket('bucketname', {}, sub {
-        my $struct = shift;
-        if (scalar @{$struct->{keys}}) {
-            # do something
-        }
-    });
-
-    # without callback
     my $bucket = $riak->list_bucket(
         'bucketname',
-        {
-            keys  => 'true',
+        parameters => {
             props => 'false',
+        },
+        callback => sub {
+            my $struct = shift;
+            if ( scalar @{ $struct->{keys} } ) {
+                # do something
+            }
         }
-    )->recv;
+    );
 
-=item B<set_bucket>
+=item B<set_bucket>($bucketname, [parameters => { }, callback => { }])
 
-Set the schema for 'bucket'. The schema parameter must be a hash with at least
-an 'allowed_fields' field. Other valid fields are 'requried_fields',
-'read_mask', and 'write_mask'.
+Sets bucket properties like n_val and allow_mult.
 
-    $riak->new_bucket('bucketname', {allowed_fields => '*'})->recv;
+=over 2
+
+=item
+
+n_val - the number of replicas for objects in this bucket
+
+=item
+
+allow_mult - whether to allow sibling objects to be created (concurrent updates)
+
+=back
+
+If successful, B<1> is returned, else B<0>.
+
+    my $result = $riak->set_bucket('bucket')->recv;
 
 =item B<fetch>
 
-Get the object stored in 'bucket' at 'key'.
-
-    $riak->fetch('bucketname', 'key')->recv;
-
 =item B<store>
 
-Store 'object' in Riak. If the object has not defined its 'key' field, a key
-will be chosen for it by the server.
-
-    $riak->store({
-        bucket => 'bucketname',
-        key    => 'key',
-        object => { foo => "bar", baz => 2 },
-        links  => [],
-    })->recv;
-
 =item B<delete>
-
-Delete the data stored in 'bucket' at 'key'.
-
-    $riak->delete('bucketname', 'key')->recv;
-
-=item B<walk>
-
-Follow links from the object stored in 'bucket' at 'key' to other objects.
-The 'spec' parameter should be an array of hashes, each hash optinally
-defining 'bucket', 'tag', and 'acc' fields.  If a field is not defined in a
-spec hash, the wildcard '_' will be used instead.
-
-    ok $res = $jiak->walk(
-        'bucketname',
-        'key',
-        [ { bucket => 'bucketname', key => '_' } ]
-    )->recv;
 
 =back
 
