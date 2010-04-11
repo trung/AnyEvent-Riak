@@ -23,7 +23,7 @@ sub new {
     my $dw          = delete $args{dw}          || 2;
 
     my $client_id
-        = "perl_anyevent_riak_" . encode_base64( int( rand(10737411824) ) );
+        = "perl_anyevent_riak_" . encode_base64( int( rand(10737411824) ), '' );
 
     bless {
         host        => $host,
@@ -49,38 +49,27 @@ sub _build_headers {
     my ( $self, $options) = @_;
     my $headers = {};
     $headers = {
-        'Content-Type'    => 'application/json',
         'X-Riak-ClientId' => $self->{client_id},
+        'Content-Type'    => 'application/json',
     };
     return $headers;
 }
 
+sub _build_query {
+    my ($self, $options) = @_;
+}
+
 sub _init_callback {
     my $self = shift;
-    $self->all_cv->begin();
 
     my ( $cv, $cb );
     if (@_) {
         $cv = pop if UNIVERSAL::isa( $_[-1], 'AnyEvent::CondVar' );
         $cb = pop if ref $_[-1] eq 'CODE';
     }
+
     $cv ||= AE::cv;
-
-    $cv->cb(
-        sub {
-            my $cv  = shift;
-            my $res = $cv->recv;
-            $cb->($res);
-        }
-    ) if $cb;
-
     return ( $cv, $cb );
-}
-
-sub all_cv {
-    my $self = shift;
-    $self->{all_cv} = AE::cv unless $self->{all_cv};
-    return $self->{all_cv};
 }
 
 sub default_cb {
@@ -109,7 +98,7 @@ sub is_alive {
 
     http_request(
         GET => $self->_build_uri( [qw/ping/] ),
-        headers => { 'Content-Type' => 'application/json', },
+        headers => $self->_build_headers(),
         sub {
             $cv->send( $cb->(@_) );
         },
@@ -127,10 +116,10 @@ sub list_bucket {
 
     http_request(
         GET => $self->_build_uri( [ $self->{path}, $bucket_name ] ),
-        headers => { 'Content-Type' => 'application/json', },
-        sub {
-            $cv->send( $cb->(@_) );
-        }
+        headers => $self->_build_headers(),
+       sub {
+           $cv->send($cb->(@_));
+       }
     );
     return $cv;
 }
@@ -145,10 +134,10 @@ sub set_bucket {
 
     http_request(
         PUT => $self->_build_uri( [ $self->{path}, 'bucket' ] ),
-        headers => { 'Content-Type' => 'application/json' },
+        headers => $self->_build_headers(),
         body    => JSON::encode_json($schema),
         sub {
-            $cv->send( $cb->(@_) );
+            $cv->send($cb->(@_));
         }
     );
     $cv;
@@ -164,9 +153,10 @@ sub fetch {
 
     my ( $cv, $cb ) = $self->_init_callback(@_);
     $cb = $self->default_cb( { json => 1 } ) if !$cb;
+
     http_request(
         GET => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
-        headers => { 'Content-Type' => 'application/json' },
+        headers => $self->_build_headers(),
         sub {
             $cv->send( $cb->(@_) );
         }
@@ -176,24 +166,24 @@ sub fetch {
 
 sub store {
     my $self   = shift;
-    my $object = shift;
+    my $bucket = shift;
+    my $key    = shift;
+    my $data   = shift;
     my $w      = shift;
     my $dw     = shift;
 
     $w  = $self->{w}  if !$w;
     $dw = $self->{dw} if !$dw;
 
-    my $bucket = $object->{bucket};
-    my $key    = $object->{key};
-    $object->{links} = [] if !exists $object->{links};
-
     my ( $cv, $cb ) = $self->_init_callback(@_);
-    $cb = $self->default_cb( { json => 1 } ) if !$cb;
+    $cb = $self->default_cb( { json => 0 } ) if !$cb;
+
+    my $json = JSON::encode_json($data);
 
     http_request(
         POST => $self->_build_uri( [ $self->{path}, $bucket, $key ] ),
-        headers => { 'Content-Type' => 'application/json' },
-        body    => JSON::encode_json($object),
+        headers => $self->_build_headers(),
+        body    => $json,
         sub {
             $cv->send( $cb->(@_) );
         }
@@ -201,13 +191,23 @@ sub store {
     $cv;
 }
 
-# sub delete {
-#     my ( $self, $bucket, $key, $rw ) = @_;
+sub delete {
+    my $self = shift;
+    my $bucket = shift;
+    my $key = shift;
 
-#     $rw = $self->{rw} || 2 if !$rw;
-#     return $self->_request( 'DELETE',
-#         $self->_build_uri( [ $bucket, $key ], { dw => $rw } ), 204 );
-# }
+    my ($cv, $cb) = $self->_init_callback(@_);
+    $cb = $self->default_cb({json => 1}) if !$cb;
+
+    http_request(
+        DELETE => $self->_build_uri([$self->{path}, $bucket, $key]),
+        headers => $self->_build_headers(),
+        sub {
+            $cv->send($cb->(@_));
+        }
+    );
+    $cv;
+}
 
 # sub walk {
 #     my ( $self, $bucket, $key, $spec ) = @_;
@@ -227,60 +227,6 @@ sub store {
 #     }
 #     return $acc;
 # }
-
-
-# sub _build_query {
-#     my ($self, $options) = @_;
-# }
-
-# sub _request {
-#     my ( $self, $method, $uri, $expected, $body ) = @_;
-#     my $cv = AnyEvent->condvar;
-#     my $cb = sub {
-#         my ( $body, $headers ) = @_;
-#         if ( $headers->{Status} == $expected ) {
-#             if ( $body && $headers->{'content-type'} eq 'application/json' ) {
-#                 return $cv->send( decode_json($body) );
-#             }
-#             else {
-#                 return $cv->send(1);
-#             }
-#         }
-#         else {
-#             return $cv->croak(
-#                 encode_json( [ $headers->{Status}, $headers->{Reason} ] ) );
-#         }
-#     };
-
-#     if ($body) {
-#         http_request(
-#             $method => $uri,
-#             headers => { 'Content-Type' => 'application/json', },
-#             body    => $body,
-#             $cb
-#         );
-#     }
-#     else {
-#         http_request(
-#             $method => $uri,
-#             headers => { 'Content-Type' => 'application/json', },
-#             $cb
-#         );
-#     }
-#     $cv;
-# }
-
-sub head {
-}
-
-sub get {
-}
-
-sub put {
-}
-
-sub post {
-}
 
 1;
 __END__
