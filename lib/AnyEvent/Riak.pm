@@ -10,8 +10,13 @@ use AnyEvent::HTTP;
 use Data::UUID;
 use MIME::Base64;
 use YAML::Syck;
+use constant {
+	DEBUG => 0
+};
 
 our $VERSION = '0.02';
+
+
 
 sub new {
     my ( $class, %args ) = @_;
@@ -26,6 +31,7 @@ sub new {
 
     my $client_id
         = "perl_anyevent_riak_" . $uuid->create_str;
+	my $json_helper = JSON->new->utf8->allow_nonref->allow_blessed;
 
     bless {
         host        => $host,
@@ -35,6 +41,7 @@ sub new {
         r           => $r,
         d           => $d,
         dw          => $dw,
+		json_helper => $json_helper,
         %args,
     }, $class;
 }
@@ -42,6 +49,7 @@ sub new {
 sub _build_uri {
     my ( $self, $path, $options ) = @_;
     my $uri = URI->new( $self->{host} );
+	print "++++++++ @$path +++++++\n" if DEBUG;
     $uri->path( join( "/", @$path ) );
     $uri->query_form( $self->_build_query($options) );
     return $uri->as_string;
@@ -124,7 +132,7 @@ sub list_bucket {
         sub {
             my ( $body, $headers ) = @_;
             if ( $body && $headers->{Status} == 200 ) {
-                my $res = JSON::decode_json($body);
+                my $res = $self->{json_helper}->decode($body);
                 $cv->send( $cb->($res) );
             }
             else {
@@ -153,7 +161,7 @@ sub set_bucket {
             $options{parameters}
         ),
         headers => $self->_build_headers( $options{parameters} ),
-        body    => JSON::encode_json($schema),
+        body    => $self->{json_helper}->encode($schema),
         sub {
             my ( $body, $headers ) = @_;
             if ( $headers->{Status} == 204 ) {
@@ -188,7 +196,7 @@ sub fetch {
         sub {
             my ($body, $headers) = @_;
             if ($body && $headers->{Status} == 200) {
-                $cv->send( $cb->(JSON::decode_json($body)) );
+                $cv->send( $cb->($self->{json_helper}->decode($body)) );
             }else{
                 $cv->send( $cb->(0) );
             }
@@ -209,7 +217,9 @@ sub store {
         $cb = $self->default_cb();
     }
 
-    my $json = JSON::encode_json($object);
+    my $json = $self->{json_helper}->encode($object);
+
+	print "-------[$bucket][$key]-------\n" if DEBUG;
 
     http_request(
         POST => $self->_build_uri(
@@ -222,7 +232,7 @@ sub store {
             my ($body, $headers) = @_;
             my $result;
             if ($headers->{Status} == 204) {
-                $result = $body ? JSON::decode_json($body) : 1;
+                $result = $body ? $self->{json_helper}->decode($body) : 1;
             }else{
                 $result = 0;
             }
